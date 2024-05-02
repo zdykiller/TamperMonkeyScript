@@ -29,6 +29,10 @@
         }
     }
 
+
+    // 记录处理过的元素不再处理
+    const parsedStackSignal = "parsedStack";
+
     // 错误对战解析成可读形式
     function parseText(element) {
         // let targetEle = element.querySelector("detail__text detail__text--expanded");
@@ -36,11 +40,18 @@
         if (!targetEle) {
             return;
         }
+        if (targetEle.classList.contains(parsedStackSignal)) {
+            return;
+        }
+
         console.log(`开始转换 ${targetEle}`);
         let targetTextNode = element.querySelector(".detail__text");
+
         let stackList = [];
+        let maxLineLength = 0;
         for (let child of targetTextNode.children) {
             stackList.push(child.innerText);
+            maxLineLength = Math.max(maxLineLength, child.innerText.length);
         }
         console.log(stackList);
         let exceptionText = stackList.join("\n");
@@ -50,10 +61,12 @@
         if (stackList.length === parsedStackList.length) {
             let index = 0;
             for (let child of targetTextNode.children) {
-                child.innerText = parsedStackList[index];
+                let originText = child.innerText.padEnd(maxLineLength, ".");
+                child.innerText = originText + " // " + parsedStackList[index];
                 index++;
             }
         }
+        targetEle.classList.add(parsedStackSignal);
     }
 
     // 监听节点变动
