@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WechatMpNotifyChecker
 // @namespace    http://tampermonkey.net/
-// @version      0.2
+// @version      0.3
 // @description  polling wechat mp page and notifiy new message
 // @author       zdykiller
 // @match        https://mp.weixin.qq.com/wxopen/wasysnotify?action=list&token=*&lang=zh_CN
@@ -77,9 +77,9 @@
 
     function testSend() {
         sendWebhookNotification("测试", "测试消息", "发送测试通知").then((resp) => {
-            alert(`${resp.status}`)
+            alert(`${resp.status} ${resp.responseText}，发送完成`)
         }).catch((err) => {
-            alert(`${err.error} 请在存储中配置 notifyUrl={你想发送的webhook}`)
+            alert(`${err.error}，请确保在存储中配置 notifyUrl={你想发送的webhook}`)
         })
     }
 
