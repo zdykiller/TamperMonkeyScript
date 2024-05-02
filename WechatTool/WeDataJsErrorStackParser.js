@@ -46,6 +46,9 @@
 
         console.log(`开始转换 ${targetEle}`);
         let targetTextNode = element.querySelector(".detail__text");
+        if (!targetTextNode.classList.contains("detail__text--expanded")) {
+            return;
+        }
 
         let stackList = [];
         let maxLineLength = 0;
