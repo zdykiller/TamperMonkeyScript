@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WechatMpNotifyChecker
 // @namespace    http://tampermonkey.net/
-// @version      2024-04-23
+// @version      0.2
 // @description  polling wechat mp page and notifiy new message
 // @author       zdykiller
 // @match        https://mp.weixin.qq.com/wxopen/wasysnotify?action=list&token=*&lang=zh_CN
