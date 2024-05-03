@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WeDataJsErrorStackParser
 // @namespace    http://tampermonkey.net/
-// @version      0.1
+// @version      0.2
 // @description  js error stack parse with symbol
 // @author       zdykiller
 // @match        https://wedata.weixin.qq.com/mp2/js-error-list
