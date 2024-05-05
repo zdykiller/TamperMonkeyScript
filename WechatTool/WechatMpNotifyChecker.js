@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         WechatMpNotifyChecker
 // @namespace    http://tampermonkey.net/
-// @version      0.4
-// @description  polling wechat mp page and notifiy new message
+// @version      0.5
+// @description  定时检查微信mp后台新通知消息，并发送到webhook
 // @author       zdykiller
 // @match        https://mp.weixin.qq.com/wxopen/wasysnotify?action=list&token=*&lang=zh_CN
 // @icon         data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==
