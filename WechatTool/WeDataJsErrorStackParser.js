@@ -1,13 +1,14 @@
 // ==UserScript==
 // @name         WeDataJsErrorStackParser
 // @namespace    http://tampermonkey.net/
-// @version      0.2
+// @version      0.3
 // @description  js error stack parse with symbol
 // @author       zdykiller
 // @match        https://wedata.weixin.qq.com/mp2/js-error-list
 // @icon         https://res.wx.qq.com/wxawedata/mp2/assets/favicon.ico
-// @grant        GM_getResourceText
-// @resource debugSymbol http://127.0.0.1:8080/1.5.45/webgl.wasm.symbols.unityweb
+// @grant        GM_xmlhttpRequest
+// @grant        GM_getValue
+// @grant        GM_registerMenuCommand
 // ==/UserScript==
 
 (function () {
@@ -16,8 +17,10 @@
     class SymbolRewriterVersion {
         static _instance = null;
 
+        static unknownVersion = "unknownVersion";
+
         constructor() {
-            this.versions = {};
+            this.rewriters = {};
         }
 
         static GetInstance() {
@@ -27,18 +30,49 @@
             return SymbolRewriterVersion._instance;
         }
 
-        getRewriter(version) {
-            if (!this.versions[version]) {
-                let symbolText = GM_getResourceText("debugSymbol");
-                this.versions[version] = new SymbolRewriter(symbolText);
-            }
-            return this.versions[version];
+        async getRewriter(version) {
+            return new Promise((resolve, reject) => {
+                if (this.rewriters[version]) {
+                    resolve(this.rewriters[version]);
+                } else {
+                    if (version === SymbolRewriterVersion.unknownVersion) {
+                        version = GM_getValue("defaultVersion", "1.5.45");
+                    }
+                    let urlStrTemplate = GM_getValue("configUrl", "http://127.0.0.1:8080/${version}/webgl.wasm.symbols.unityweb");
+                    let requestUrl = urlStrTemplate.replace("${version}", version);
+                    GM_xmlhttpRequest({
+                        url: requestUrl,
+                        method: "GET",
+                        responseType: "text",
+                        timeout: 5000,
+                        onreadystatechange: (response) => {
+                            if (response.readyState === 4) {
+                                if (response.status === 200) {
+                                    this.rewriters[version] = new SymbolRewriter(version, response.responseText);
+                                    resolve(this.rewriters[version]);
+                                } else {
+                                    console.log("error", response);
+                                    reject();
+                                }
+                            }
+                        },
+                        onerror(response) {
+                            console.log("error", response);
+                            reject();
+                        },
+                        onabort(response) {
+                            console.log("abort", response);
+                            reject();
+                        }
+                    });
+                }
+            });
         }
     }
 
     class StateChecker {
         // 记录处理过的元素不再处理
-        parsedStackSignal = "parsedStack";
+        static parsedStackSignal = "parsedStack";
 
         insertParseButton(element) {
             let customClassName = "_custom__parse__button";
@@ -57,13 +91,13 @@
         }
 
         // 错误对战解析成可读形式
-        parseText(element) {
+        async parseText(element) {
             // let targetEle = element.querySelector("detail__text detail__text--expanded");
             let targetEle = element.querySelector(".detail__content");
             if (!targetEle) {
                 return;
             }
-            if (targetEle.classList.contains(this.parsedStackSignal)) {
+            if (targetEle.classList.contains(StateChecker.parsedStackSignal)) {
                 return;
             }
 
@@ -80,10 +114,15 @@
                 maxLineLength = Math.max(maxLineLength, child.innerText.length);
             }
             console.log(stackList);
-            let stackVersionStr = "1.5.45";
+            let stackVersionStr = SymbolRewriterVersion.unknownVersion;
             let exceptionText = stackList.join("\n");
-            let parsedStackText = SymbolRewriterVersion.GetInstance().getRewriter(stackVersionStr).parseStack(exceptionText);
+            let rewriter = await SymbolRewriterVersion.GetInstance().getRewriter(stackVersionStr);
+            let parsedStackText = rewriter.parseStack(exceptionText);
             let parsedStackList = parsedStackText.split("\n");
+
+            let brElement = document.createElement("div");
+            brElement.innerText = `『${stackVersionStr}版本，以${rewriter.versionText}符号表解析』${targetTextNode.children[0].innerText}`;
+
             if (stackList.length === parsedStackList.length) {
                 let index = 0;
                 for (let child of targetTextNode.children) {
@@ -92,7 +131,9 @@
                     index++;
                 }
             }
-            targetEle.classList.add(this.parsedStackSignal);
+
+            targetTextNode.insertBefore(brElement, targetTextNode.children[0]);
+            targetEle.classList.add(StateChecker.parsedStackSignal);
         }
 
         initAfterLoad() {
@@ -109,7 +150,7 @@
 
             // 当观察到变动时执行的回调函数
             const callback = (mutationsList, observer) => {
-                console.log('mutationsList', mutationsList);
+                // console.log('mutationsList', mutationsList);
                 // 遍历所有变动
                 for (const mutation of mutationsList) {
                     switch (mutation.type) {
@@ -130,24 +171,28 @@
         }
     }
 
-    let checker = new StateChecker();
+    GM_registerMenuCommand("检查配置", function (event) {
+        let configUrl = GM_getValue("configUrl", "没配置");
+        let defaultVersion = GM_getValue("defaultVersion", "没配置");
+        alert(`configUrl: ${configUrl}\n请求样例: http://127.0.0.1:8080/\${version}/webgl.wasm.symbols.unityweb\ndefaultVersion: ${defaultVersion}\n默认版本样例: 1.5.45`);
+    });
 
-    window.addEventListener("load", ()=>{
+    let checker = new StateChecker();
+    window.addEventListener("load", () => {
         checker.initAfterLoad();
     });
 
     // wechatminigame tool
     // https://github.com/wechat-miniprogram/minigame-unity-webgl-transform/blob/main/tools/rewrite_exception_symbol.js
     class SymbolRewriter {
-        constructor(symbolText) {
+        constructor(versionText, symbolText) {
+            this.versionText = versionText;
             this.symbolText = symbolText;
         }
 
         // 解析调用栈
-        parseStack(exceptionText, symbolText) {
-            if (!symbolText) {
-                symbolText = this.symbolText;
-            }
+        parseStack(exceptionText) {
+            let symbolText = this.symbolText;
             var symbolMap = this.parseSymbol(symbolText);
             var res = this.replaceWithSymbol(
                 exceptionText,

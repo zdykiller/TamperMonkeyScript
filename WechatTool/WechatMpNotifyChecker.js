@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WechatMpNotifyChecker
 // @namespace    http://tampermonkey.net/
-// @version      0.3
+// @version      0.4
 // @description  polling wechat mp page and notifiy new message
 // @author       zdykiller
 // @match        https://mp.weixin.qq.com/wxopen/wasysnotify?action=list&token=*&lang=zh_CN
@@ -83,12 +83,12 @@
         })
     }
 
+    GM_registerMenuCommand("测试发送通知", function (event) {
+        testSend()
+    });
+
     // 页面加载完毕后检查更新并开始定时刷新
     window.addEventListener("load", function () {
-        GM_registerMenuCommand("测试发送通知", function (event) {
-            testSend()
-        });
-
         setTimeout(() => {
             checkForUpdates();
         }, 10 * 1000);
