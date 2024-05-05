@@ -1,33 +1,43 @@
 // ==UserScript==
 // @name         WeDataJsErrorStackParser
 // @namespace    http://tampermonkey.net/
-// @version      0.4
+// @version      0.5
 // @description  wedata网页上解析错误栈，按照符号表解析成可读形式
 // @author       zdykiller
 // @match        https://wedata.weixin.qq.com/mp2/js-error-list
 // @icon         https://res.wx.qq.com/wxawedata/mp2/assets/favicon.ico
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
+// @grant        GM_setValue
 // @grant        GM_registerMenuCommand
 // ==/UserScript==
 
 (function () {
     'use strict';
 
-    class SymbolRewriterVersion {
+    class SymbolConfig {
         static _instance = null;
 
         static unknownVersion = "unknownVersion";
 
+        // symbol的url链接的存储key
+        static configUrlKey = "configUrl";
+        static configUrlDefaultValue = "http://127.0.0.1:8080/${version}/webgl.wasm.symbols.unityweb";
+
+        // symbol的版本号字符串的存储key
+        static configVersionKey = "defaultVersion";
+        static configVersionDefaultValue = "1.5.45";
+
         constructor() {
+            // 保存已经请求过的版本的Rewriter对象
             this.rewriters = {};
         }
 
         static GetInstance() {
-            if (!SymbolRewriterVersion._instance) {
-                SymbolRewriterVersion._instance = new SymbolRewriterVersion();
+            if (!SymbolConfig._instance) {
+                SymbolConfig._instance = new SymbolConfig();
             }
-            return SymbolRewriterVersion._instance;
+            return SymbolConfig._instance;
         }
 
         async getRewriter(version) {
@@ -35,10 +45,10 @@
                 if (this.rewriters[version]) {
                     resolve(this.rewriters[version]);
                 } else {
-                    if (version === SymbolRewriterVersion.unknownVersion) {
-                        version = GM_getValue("defaultVersion", "1.5.45");
+                    if (version === SymbolConfig.unknownVersion) {
+                        version = GM_getValue(SymbolConfig.configVersionKey, SymbolConfig.configVersionDefaultValue);
                     }
-                    let urlStrTemplate = GM_getValue("configUrl", "http://127.0.0.1:8080/${version}/webgl.wasm.symbols.unityweb");
+                    let urlStrTemplate = GM_getValue(SymbolConfig.configUrlKey, SymbolConfig.configUrlDefaultValue);
                     let requestUrl = urlStrTemplate.replace("${version}", version);
                     GM_xmlhttpRequest({
                         url: requestUrl,
@@ -114,9 +124,9 @@
                 maxLineLength = Math.max(maxLineLength, child.innerText.length);
             }
             console.log(stackList);
-            let stackVersionStr = SymbolRewriterVersion.unknownVersion;
+            let stackVersionStr = SymbolConfig.unknownVersion;
             let exceptionText = stackList.join("\n");
-            let rewriter = await SymbolRewriterVersion.GetInstance().getRewriter(stackVersionStr);
+            let rewriter = await SymbolConfig.GetInstance().getRewriter(stackVersionStr);
             let parsedStackText = rewriter.parseStack(exceptionText);
             let parsedStackList = parsedStackText.split("\n");
 
@@ -171,10 +181,26 @@
         }
     }
 
-    GM_registerMenuCommand("检查配置", function (event) {
-        let configUrl = GM_getValue("configUrl", "没配置");
-        let defaultVersion = GM_getValue("defaultVersion", "没配置");
-        alert(`configUrl: ${configUrl}\n请求样例: http://127.0.0.1:8080/\${version}/webgl.wasm.symbols.unityweb\ndefaultVersion: ${defaultVersion}\n默认版本样例: 1.5.45`);
+    GM_registerMenuCommand("配置DebugSymbol的Url", function (event) {
+        let configUrl = GM_getValue(SymbolConfig.configUrlKey, SymbolConfig.configUrlDefaultValue);
+        let userConfig = window.prompt(`样例『${SymbolConfig.configUrlDefaultValue}』，$\{version}要保留用于不同版本路径替换`, configUrl);
+        if (userConfig != null) {
+            GM_setValue(SymbolConfig.configUrlKey, userConfig);
+            console.log("配置DebugSymbol的Url", userConfig);
+        } else {
+            console.log("取消配置");
+        }
+    });
+
+    GM_registerMenuCommand("配置DebugSymbol的版本号", function (event) {
+        let defaultVersion = GM_getValue(SymbolConfig.configVersionKey, SymbolConfig.configVersionDefaultValue);
+        let userConfig = window.prompt(`样例『${SymbolConfig.configVersionDefaultValue}』，会替换到$\{version}，作为url请求debugsymbol链接`, defaultVersion);
+        if (userConfig != null) {
+            GM_setValue(SymbolConfig.configVersionKey, userConfig);
+            console.log("配置DebugSymbol的版本号", userConfig);
+        } else {
+            console.log("取消配置");
+        }
     });
 
     let checker = new StateChecker();
