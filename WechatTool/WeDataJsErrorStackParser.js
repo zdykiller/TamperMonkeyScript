@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WeDataJsErrorStackParser
 // @namespace    http://tampermonkey.net/
-// @version      0.5
+// @version      0.6
 // @description  wedata网页上解析错误栈，按照符号表解析成可读形式
 // @author       zdykiller
 // @match        https://wedata.weixin.qq.com/mp2/js-error-list
@@ -24,9 +24,36 @@
         static configUrlKey = "configUrl";
         static configUrlDefaultValue = "http://127.0.0.1:8080/${version}/webgl.wasm.symbols.unityweb";
 
+        static get configUrl() {
+            return GM_getValue(SymbolConfig.configVersionKey, SymbolConfig.configVersionDefaultValue);
+        }
+
+        static set configUrl(value) {
+            GM_setValue(SymbolConfig.configVersionKey, value);
+        }
+
         // symbol的版本号字符串的存储key
         static configVersionKey = "defaultVersion";
         static configVersionDefaultValue = "1.5.45";
+
+        static get configVersion() {
+            return GM_getValue(SymbolConfig.configVersionKey, SymbolConfig.configVersionDefaultValue);
+        }
+
+        static set configVersion(value) {
+            GM_setValue(SymbolConfig.configVersionKey, value);
+        }
+
+        static configOnlyShowFuncNameKey = "onlyShowFuncName";
+        static configOnlyShowFuncNameDefaultValue = true;
+
+        static get onlyShowFuncName() {
+            return GM_getValue(SymbolConfig.configOnlyShowFuncNameKey, SymbolConfig.configOnlyShowFuncNameDefaultValue);
+        }
+
+        static set onlyShowFuncName(value) {
+            GM_setValue(SymbolConfig.configOnlyShowFuncNameKey, value);
+        }
 
         constructor() {
             // 保存已经请求过的版本的Rewriter对象
@@ -46,7 +73,7 @@
                     resolve(this.rewriters[version]);
                 } else {
                     if (version === SymbolConfig.unknownVersion) {
-                        version = GM_getValue(SymbolConfig.configVersionKey, SymbolConfig.configVersionDefaultValue);
+                        version = SymbolConfig.configVersion;
                     }
                     let urlStrTemplate = GM_getValue(SymbolConfig.configUrlKey, SymbolConfig.configUrlDefaultValue);
                     let requestUrl = urlStrTemplate.replace("${version}", version);
@@ -127,7 +154,7 @@
             let stackVersionStr = SymbolConfig.unknownVersion;
             let exceptionText = stackList.join("\n");
             let rewriter = await SymbolConfig.GetInstance().getRewriter(stackVersionStr);
-            let parsedStackText = rewriter.parseStack(exceptionText);
+            let parsedStackText = rewriter.parseStack(exceptionText, SymbolConfig.onlyShowFuncName);
             let parsedStackList = parsedStackText.split("\n");
 
             let brElement = document.createElement("div");
@@ -182,10 +209,9 @@
     }
 
     GM_registerMenuCommand("配置DebugSymbol的Url", function (event) {
-        let configUrl = GM_getValue(SymbolConfig.configUrlKey, SymbolConfig.configUrlDefaultValue);
-        let userConfig = window.prompt(`样例『${SymbolConfig.configUrlDefaultValue}』，$\{version}要保留用于不同版本路径替换`, configUrl);
+        let userConfig = window.prompt(`样例『${SymbolConfig.configUrlDefaultValue}』，$\{version}要保留用于不同版本路径替换`, SymbolConfig.configUrl);
         if (userConfig != null) {
-            GM_setValue(SymbolConfig.configUrlKey, userConfig);
+            SymbolConfig.configUrl = userConfig;
             console.log("配置DebugSymbol的Url", userConfig);
         } else {
             console.log("取消配置");
@@ -193,14 +219,18 @@
     });
 
     GM_registerMenuCommand("配置DebugSymbol的版本号", function (event) {
-        let defaultVersion = GM_getValue(SymbolConfig.configVersionKey, SymbolConfig.configVersionDefaultValue);
-        let userConfig = window.prompt(`样例『${SymbolConfig.configVersionDefaultValue}』，会替换到$\{version}，作为url请求debugsymbol链接`, defaultVersion);
+        let userConfig = window.prompt(`样例『${SymbolConfig.configVersionDefaultValue}』，会替换到$\{version}，作为url请求debugsymbol链接`, SymbolConfig.configVersion);
         if (userConfig != null) {
-            GM_setValue(SymbolConfig.configVersionKey, userConfig);
+            SymbolConfig.configVersion = userConfig;
             console.log("配置DebugSymbol的版本号", userConfig);
         } else {
             console.log("取消配置");
         }
+    });
+
+    GM_registerMenuCommand("设置仅展示函数名", function (event) {
+        SymbolConfig.onlyShowFuncName = !SymbolConfig.onlyShowFuncName;
+        alert(`仅展示函数名，不展示参数类型 ${SymbolConfig.onlyShowFuncName}`);
     });
 
     let checker = new StateChecker();
@@ -213,13 +243,13 @@
     class SymbolRewriter {
         constructor(versionText, symbolText) {
             this.versionText = versionText;
-            this.symbolText = symbolText;
+            // this.symbolText = symbolText;
+            this.symbolMap = this.parseSymbol(symbolText);
         }
 
         // 解析调用栈
-        parseStack(exceptionText) {
-            let symbolText = this.symbolText;
-            var symbolMap = this.parseSymbol(symbolText);
+        parseStack(exceptionText, onlyShowFuncName) {
+            var symbolMap = this.symbolMap;
             var res = this.replaceWithSymbol(
                 exceptionText,
                 symbolMap,
@@ -229,6 +259,11 @@
                     if (!s) {
                         return null;
                     }
+
+                    if (onlyShowFuncName) {
+                        return (match_info.value[3])
+                    }
+
                     return (
                         s + match_info.value[2] + "wasm-function[" + match_info.value[3] + "]"
                     );
@@ -244,6 +279,11 @@
                         if (!s) {
                             return null;
                         }
+
+                        if (onlyShowFuncName) {
+                            return s;
+                        }
+
                         return "wasm-function[" + s + "]";
                     }
                 );
@@ -258,6 +298,11 @@
                         if (!s) {
                             return null;
                         }
+
+                        if (onlyShowFuncName) {
+                            return s;
+                        }
+
                         return "wasm-function[" + s + "]";
                     }
                 );
