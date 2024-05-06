@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WeDataJsErrorStackParser
 // @namespace    http://tampermonkey.net/
-// @version      0.6
+// @version      0.7
 // @description  wedata网页上解析错误栈，按照符号表解析成可读形式
 // @author       zdykiller
 // @match        https://wedata.weixin.qq.com/mp2/js-error-list
@@ -152,10 +152,27 @@
             }
             console.log(stackList);
             let stackVersionStr = SymbolConfig.unknownVersion;
-            let exceptionText = stackList.join("\n");
             let rewriter = await SymbolConfig.GetInstance().getRewriter(stackVersionStr);
-            let parsedStackText = rewriter.parseStack(exceptionText, SymbolConfig.onlyShowFuncName);
-            let parsedStackList = parsedStackText.split("\n");
+
+            let parsedStackList = [];
+            if (SymbolConfig.onlyShowFuncName) {
+                // 仅展示函数名，则用按行文本替换的方式
+                for (let stackExceptionStr of stackList) {
+                    let res = rewriter.parseStack(stackExceptionStr);
+                    let parsedStackText = "";
+                    if (res.matched) {
+                        // 把set展开成array拼接成字符串
+                        parsedStackText = [...res.funcNameSet].join(" ");
+                    }
+                    parsedStackList.push(parsedStackText);
+                }
+            } else {
+                // 整个文本替换的方式
+                let exceptionText = stackList.join("\n");
+                let res = rewriter.parseStack(exceptionText);
+                let parsedStackText = res.output;
+                parsedStackList = parsedStackText.split("\n");
+            }
 
             let brElement = document.createElement("div");
             brElement.innerText = `『${stackVersionStr}版本，以${rewriter.versionText}符号表解析』${targetTextNode.children[0].innerText}`;
@@ -247,9 +264,14 @@
             this.symbolMap = this.parseSymbol(symbolText);
         }
 
-        // 解析调用栈
-        parseStack(exceptionText, onlyShowFuncName) {
+        /**
+         * 解析调用栈
+         * @param exceptionText 异常调用栈文本，可以是单行或者拼接的多行字符串
+         * @return {{output: string, matched: boolean, funcNameSet: Set}}
+         */
+        parseStack(exceptionText) {
             var symbolMap = this.symbolMap;
+            let funcNameSet = new Set();
             var res = this.replaceWithSymbol(
                 exceptionText,
                 symbolMap,
@@ -260,9 +282,7 @@
                         return null;
                     }
 
-                    if (onlyShowFuncName) {
-                        return (match_info.value[3])
-                    }
+                    funcNameSet.add(match_info.value[3]);
 
                     return (
                         s + match_info.value[2] + "wasm-function[" + match_info.value[3] + "]"
@@ -280,9 +300,7 @@
                             return null;
                         }
 
-                        if (onlyShowFuncName) {
-                            return s;
-                        }
+                        funcNameSet.add(s);
 
                         return "wasm-function[" + s + "]";
                     }
@@ -299,16 +317,15 @@
                             return null;
                         }
 
-                        if (onlyShowFuncName) {
-                            return s;
-                        }
+                        funcNameSet.add(s);
 
                         return "wasm-function[" + s + "]";
                     }
                 );
             }
             console.log(res.output);
-            return res.output;
+            res.funcNameSet = funcNameSet;
+            return res;
         }
 
         demangle(func) {
@@ -544,6 +561,14 @@
             return symbolMap;
         }
 
+        /**
+         *
+         * @param src 调用栈字符串
+         * @param symbolMap 符号表map
+         * @param regex 匹配替换的正则式
+         * @param replaceFunc 替换函数，用于根据符号表自行替换函数
+         * @return {{output: string, matched: boolean}} 返回替换后的字符串和是否有匹配到
+         */
         replaceWithSymbol(src, symbolMap, regex, replaceFunc) {
             var res = src.matchAll(regex);
             // console.log("to replace symbol:", src, regex);
