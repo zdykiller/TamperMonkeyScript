@@ -196,7 +196,7 @@
 
 
         // 监听节点变动
-        listenAddDetail() {
+        replaceJsErrorListPage() {
             // 选择要观察变动的节点
             const targetNode = document.body;
 
@@ -223,10 +223,6 @@
 
             // 以上面的配置开始观察目标节点
             observer.observe(targetNode, config);
-        }
-
-        replaceJsErrorListPage() {
-            this.listenAddDetail();
         }
 
         replaceJsErrorDetailWeb() {
