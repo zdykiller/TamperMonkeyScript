@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WeDataJsErrorStackParser
 // @namespace    http://tampermonkey.net/
-// @version      0.7
+// @version      0.8
 // @description  wedata网页上解析错误栈，按照符号表解析成可读形式
 // @author       zdykiller
 // @match        https://wedata.weixin.qq.com/mp2/js-error-*
