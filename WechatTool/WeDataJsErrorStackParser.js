@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WeDataJsErrorStackParser
 // @namespace    http://tampermonkey.net/
-// @version      0.8
+// @version      0.9
 // @description  wedata网页上解析错误栈，按照符号表解析成可读形式
 // @author       zdykiller
 // @match        https://wedata.weixin.qq.com/mp2/js-error-*
@@ -120,13 +120,12 @@
             button.textContent = "解析";
             button.className = customClassName;
             button.onclick = (mouseEvent) => {
-                parseText(element);
+                this.parseDetail(element);
             }
             if (element.children[0]) {
                 element.insertBefore(button, element.children[0]);
             }
         }
-
 
         async parseTextWithNode(targetTextNode) {
             let stackList = [];
