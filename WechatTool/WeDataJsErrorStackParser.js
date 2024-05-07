@@ -4,7 +4,7 @@
 // @version      0.7
 // @description  wedata网页上解析错误栈，按照符号表解析成可读形式
 // @author       zdykiller
-// @match        https://wedata.weixin.qq.com/mp2/js-error-list
+// @match        https://wedata.weixin.qq.com/mp2/js-error-*
 // @icon         https://res.wx.qq.com/wxawedata/mp2/assets/favicon.ico
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
@@ -127,23 +127,8 @@
             }
         }
 
-        // 错误对战解析成可读形式
-        async parseText(element) {
-            // let targetEle = element.querySelector("detail__text detail__text--expanded");
-            let targetEle = element.querySelector(".detail__content");
-            if (!targetEle) {
-                return;
-            }
-            if (targetEle.classList.contains(StateChecker.parsedStackSignal)) {
-                return;
-            }
 
-            console.log(`开始转换 ${targetEle}`);
-            let targetTextNode = element.querySelector(".detail__text");
-            if (!targetTextNode.classList.contains("detail__text--expanded")) {
-                return;
-            }
-
+        async parseTextWithNode(targetTextNode) {
             let stackList = [];
             let maxLineLength = 0;
             for (let child of targetTextNode.children) {
@@ -187,12 +172,29 @@
             }
 
             targetTextNode.insertBefore(brElement, targetTextNode.children[0]);
+        }
+
+        // 错误对战解析成可读形式
+        async parseDetail(node) {
+            // let targetEle = element.querySelector("detail__text detail__text--expanded");
+            let targetEle = node.querySelector(".detail__content");
+            if (!targetEle) {
+                return;
+            }
+            if (targetEle.classList.contains(StateChecker.parsedStackSignal)) {
+                return;
+            }
+
+            console.log(`开始转换 ${targetEle}`);
+            let targetTextNode = node.querySelector(".detail__text");
+            if (!targetTextNode.classList.contains("detail__text--expanded")) {
+                return;
+            }
+
+            await this.parseTextWithNode(targetTextNode);
             targetEle.classList.add(StateChecker.parsedStackSignal);
         }
 
-        initAfterLoad() {
-            this.listenAddDetail();
-        }
 
         // 监听节点变动
         listenAddDetail() {
@@ -211,7 +213,7 @@
                         case "childList":
                             break;
                         case "attributes":
-                            this.parseText(mutation.target.parentNode);
+                            this.parseDetail(mutation.target.parentNode);
                             break;
                     }
                 }
@@ -222,6 +224,17 @@
 
             // 以上面的配置开始观察目标节点
             observer.observe(targetNode, config);
+        }
+
+        replaceJsErrorListPage() {
+            this.listenAddDetail();
+        }
+
+        replaceJsErrorDetailWeb() {
+            let targetTextNodeList = document.body.querySelectorAll(".js-error__code");
+            if (targetTextNodeList.length > 0) {
+                this.parseTextWithNode(targetTextNodeList[0]);
+            }
         }
     }
 
@@ -251,9 +264,17 @@
     });
 
     let checker = new StateChecker();
-    window.addEventListener("load", () => {
-        checker.initAfterLoad();
-    });
+    if (document.URL.includes("js-error-detail")) {
+        // js-error-detail只展示一条内容
+        window.addEventListener("load", () => {
+            checker.replaceJsErrorDetailWeb();
+        });
+    } else if (document.URL.includes("js-error-list")) {
+        // js-error-list以列表形式呈现每条错误信息
+        window.addEventListener("load", () => {
+            checker.replaceJsErrorListPage();
+        });
+    }
 
     // wechatminigame tool
     // https://github.com/wechat-miniprogram/minigame-unity-webgl-transform/blob/main/tools/rewrite_exception_symbol.js
