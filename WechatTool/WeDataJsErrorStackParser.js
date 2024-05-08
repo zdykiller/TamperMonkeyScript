@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WeDataJsErrorStackParser
 // @namespace    http://tampermonkey.net/
-// @version      0.9
+// @version      0.10
 // @description  wedata网页上解析错误栈，按照符号表解析成可读形式
 // @author       zdykiller
 // @match        https://wedata.weixin.qq.com/mp2/js-error-*
@@ -25,11 +25,11 @@
         static configUrlDefaultValue = "http://127.0.0.1:8080/${version}/webgl.wasm.symbols.unityweb";
 
         static get configUrl() {
-            return GM_getValue(SymbolConfig.configVersionKey, SymbolConfig.configVersionDefaultValue);
+            return GM_getValue(SymbolConfig.configUrlKey, SymbolConfig.configUrlDefaultValue);
         }
 
         static set configUrl(value) {
-            GM_setValue(SymbolConfig.configVersionKey, value);
+            GM_setValue(SymbolConfig.configUrlKey, value);
         }
 
         // symbol的版本号字符串的存储key
