@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WeDataJsErrorStackParser
 // @namespace    http://tampermonkey.net/
-// @version      0.10
+// @version      0.11
 // @description  wedata网页上解析错误栈，按照符号表解析成可读形式
 // @author       zdykiller
 // @match        https://wedata.weixin.qq.com/mp2/js-error-*
@@ -233,6 +233,52 @@
         }
     }
 
+    class ErrorStackTranslateWeb {
+        // 创建一个新的页面的HTML内容
+        html = `
+            <!DOCTYPE html>
+            <html lang="en">
+            <head>
+                <meta charset="UTF-8">
+                <title>错误栈替换</title>
+            </head>
+            <body>
+                <h1>错误栈替换</h1>
+                <div id="input-container">
+                <textarea id="left-input" style="width:600px;height:800px">这里输入错误栈</textarea>
+                <textarea id="right-output" style="width:600px;height:800px">这里输出错误栈</textarea>
+            </body>
+            </html>`;
+
+        async handleInput(outputNode) {
+            let value = event.target.value;
+            // 在这里处理输入事件
+            console.log('Input value:', value);
+            let rewriter = await SymbolConfig.GetInstance().getRewriter(SymbolConfig.unknownVersion);
+            let res = rewriter.parseStack(value);
+            outputNode.value = `符号表版本${rewriter.versionText}\n`+ res.output;
+        }
+
+        openWindow() {
+            // 使用window.open()打开一个新窗口，并且使用data:URI方式加载HTML内容
+            let newWindow = window.open("", "customPopup", "width=800,height=600");
+            if (newWindow) {
+                // 对于一些浏览器，需要先进行一次写入操作，才能使用data URI
+                newWindow.document.write('<title>自定义弹窗</title>');
+                // 使用data:URI方式加载HTML内容
+                newWindow.document.write('<body style="margin:0;">' + this.html + '</body>');
+                newWindow.document.close(); // 关闭文档
+                let inputEle = newWindow.document.getElementById("left-input");
+                let outputEle = newWindow.document.getElementById("right-output");
+                inputEle.addEventListener("input", ()=>{
+                    this.handleInput(outputEle)
+                });
+            } else {
+                alert("窗口打开失败，请允许弹窗。");
+            }
+        }
+    }
+
     GM_registerMenuCommand("配置DebugSymbol的Url", function (event) {
         let userConfig = window.prompt(`样例『${SymbolConfig.configUrlDefaultValue}』，$\{version}要保留用于不同版本路径替换`, SymbolConfig.configUrl);
         if (userConfig != null) {
@@ -256,6 +302,11 @@
     GM_registerMenuCommand("设置仅展示函数名", function (event) {
         SymbolConfig.onlyShowFuncName = !SymbolConfig.onlyShowFuncName;
         alert(`仅展示函数名，不展示参数类型 ${SymbolConfig.onlyShowFuncName}`);
+    });
+
+    GM_registerMenuCommand("错误栈翻译工具", function (event) {
+        let debugSymbolWeb = new ErrorStackTranslateWeb();
+        debugSymbolWeb.openWindow();
     });
 
     let checker = new StateChecker();
