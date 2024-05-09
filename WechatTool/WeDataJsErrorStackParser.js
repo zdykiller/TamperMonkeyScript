@@ -1,10 +1,11 @@
 // ==UserScript==
 // @name         WeDataJsErrorStackParser
 // @namespace    http://tampermonkey.net/
-// @version      0.12
+// @version      0.13
 // @description  wedata网页上解析错误栈，按照符号表解析成可读形式
 // @author       zdykiller
 // @match        https://wedata.weixin.qq.com/mp2/js-error-*
+// @match        https://mp.weixin.qq.com/wxamp/manage/feedback*
 // @icon         https://res.wx.qq.com/wxawedata/mp2/assets/favicon.ico
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
