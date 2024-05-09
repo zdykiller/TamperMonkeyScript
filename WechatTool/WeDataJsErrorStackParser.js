@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WeDataJsErrorStackParser
 // @namespace    http://tampermonkey.net/
-// @version      0.11
+// @version      0.12
 // @description  wedata网页上解析错误栈，按照符号表解析成可读形式
 // @author       zdykiller
 // @match        https://wedata.weixin.qq.com/mp2/js-error-*
@@ -245,8 +245,8 @@
             <body>
                 <h1>错误栈替换</h1>
                 <div id="input-container">
-                <textarea id="left-input" style="width:600px;height:800px">这里输入错误栈</textarea>
-                <textarea id="right-output" style="width:600px;height:800px">这里输出错误栈</textarea>
+                <textarea id="left-input" style="width:600px;height:800px">这里输入</textarea>
+                <textarea id="right-output" style="width:600px;height:800px">这里输出</textarea>
             </body>
             </html>`;
 
@@ -261,7 +261,7 @@
 
         openWindow() {
             // 使用window.open()打开一个新窗口，并且使用data:URI方式加载HTML内容
-            let newWindow = window.open("", "customPopup", "width=800,height=600");
+            let newWindow = window.open("", "CustomErrorStackWeb", "width=1400,height=1000");
             if (newWindow) {
                 // 对于一些浏览器，需要先进行一次写入操作，才能使用data URI
                 newWindow.document.write('<title>自定义弹窗</title>');
