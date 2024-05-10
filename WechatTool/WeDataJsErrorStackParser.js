@@ -260,7 +260,6 @@
                 <h1>错误栈替换</h1>
                 <div id="input-container" style="display: flex;">
                     <textarea id="left-input" style="flex: 1; margin-right: 5px; height: 800px;"></textarea>
-                    <div id="separator" style="width: 10px; cursor: col-resize; background-color: #ccc;"></div>
                     <textarea id="right-output" style="flex: 1; margin-left: 5px; height: 800px;"></textarea>
                 </div>
             </body>
