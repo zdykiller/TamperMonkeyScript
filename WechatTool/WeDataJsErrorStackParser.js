@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WeDataJsErrorStackParser
 // @namespace    http://tampermonkey.net/
-// @version      0.15
+// @version      0.16
 // @description  wedata网页上解析错误栈，按照符号表解析成可读形式
 // @author       zdykiller
 // @match        https://wedata.weixin.qq.com/mp2/js-error-*
@@ -259,8 +259,8 @@
             <body>
                 <h1>错误栈替换</h1>
                 <div id="input-container" style="display: flex;">
-                    <textarea id="left-input" style="flex: 1; margin-right: 5px; height: 800px;"></textarea>
-                    <textarea id="right-output" style="flex: 1; margin-left: 5px; height: 800px;"></textarea>
+                    <textarea id="left-input" style="flex: 1; margin-right: 5px; height: 800px;" placeholder="这里输入"></textarea>
+                    <textarea id="right-output" style="flex: 1; margin-left: 5px; height: 800px;" placeholder="这里输出"></textarea>
                 </div>
             </body>
             </html>`;
