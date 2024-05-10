@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WeDataJsErrorStackParser
 // @namespace    http://tampermonkey.net/
-// @version      0.13
+// @version      0.14
 // @description  wedata网页上解析错误栈，按照符号表解析成可读形式
 // @author       zdykiller
 // @match        https://wedata.weixin.qq.com/mp2/js-error-*
@@ -61,6 +61,11 @@
             this.rewriters = {};
         }
 
+        /**
+         * 获取单例对象
+         * @returns {SymbolConfig}
+         * @constructor
+         */
         static GetInstance() {
             if (!SymbolConfig._instance) {
                 SymbolConfig._instance = new SymbolConfig();
@@ -68,6 +73,11 @@
             return SymbolConfig._instance;
         }
 
+        /**
+         * 根据版本号获取Rewriter对象
+         * @param version 版本号
+         * @returns {Promise<SymbolRewriter>} 返回Promise对象，resolve的参数是Rewriter对象
+         */
         async getRewriter(version) {
             return new Promise((resolve, reject) => {
                 if (this.rewriters[version]) {
@@ -108,6 +118,9 @@
         }
     }
 
+    /**
+     * 状态检查器，用于检查页面元素状态，进行解析
+     */
     class StateChecker {
         // 记录处理过的元素不再处理
         static parsedStackSignal = "parsedStack";
@@ -245,9 +258,11 @@
             </head>
             <body>
                 <h1>错误栈替换</h1>
-                <div id="input-container">
-                <textarea id="left-input" style="width:600px;height:800px">这里输入</textarea>
-                <textarea id="right-output" style="width:600px;height:800px">这里输出</textarea>
+                <div id="input-container" style="display: flex;">
+                    <textarea id="left-input" style="flex: 1; margin-right: 5px; height: 800px;"></textarea>
+                    <div id="separator" style="width: 10px; cursor: col-resize; background-color: #ccc;"></div>
+                    <textarea id="right-output" style="flex: 1; margin-left: 5px; height: 800px;"></textarea>
+                </div>
             </body>
             </html>`;
 
