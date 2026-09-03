@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Jenkins 通用精确构建耗时
 // @namespace    local.jenkins.tools
-// @version      2.1.0
+// @version      2.1.1
 // @description  在任意 Jenkins 的构建详情、左侧构建历史和时间趋势页面显示秒级耗时
 // @match        *://*/job/*
 // @match        *://*/*/job/*
@@ -817,19 +817,65 @@
                     'jenkins-tools-build-exact-duration'
                 );
 
-            if (element) {
-                return element;
+            if (!element) {
+                element =
+                    document.createElement('span');
+
+                element.id =
+                    'jenkins-tools-build-exact-duration';
+
+                element.className =
+                    `${EXACT_CLASS} ` +
+                    `${EXACT_CLASS}--detail`;
             }
 
-            element =
-                document.createElement('span');
+            /*
+             * 构建详情页右上角的时间状态区：
+             *
+             *   Started ... ago
+             *   Build has been executing for ... on ...
+             *
+             * 或已完成时：
+             *
+             *   Started ... ago
+             *   Took ... on ...
+             *
+             * 优先放到第二行的经过时间后、构建节点前，避免日志
+             * 增长时精确耗时被追加到整个 main-panel 的最底部。
+             */
+            const timingPanel = [
+                ...document.querySelectorAll(
+                    '#main-panel > div'
+                )
+            ].find(candidate =>
+                candidate.style?.float === 'right' &&
+                candidate.children.length > 0
+            );
 
-            element.id =
-                'jenkins-tools-build-exact-duration';
+            const timingLine =
+                timingPanel?.lastElementChild;
 
-            element.className =
-                `${EXACT_CLASS} ` +
-                `${EXACT_CLASS}--detail`;
+            if (timingLine) {
+                const agentLink =
+                    timingLine.querySelector(
+                        'a[href*="/computer/"]'
+                    );
+
+                const insertBeforeNode =
+                    agentLink?.previousSibling || null;
+
+                if (
+                    element.parentElement !== timingLine ||
+                    element.nextSibling !== insertBeforeNode
+                ) {
+                    timingLine.insertBefore(
+                        element,
+                        insertBeforeNode
+                    );
+                }
+
+                return element;
+            }
 
             const trendLink = [
                 ...document.querySelectorAll(
@@ -849,17 +895,24 @@
             });
 
             if (trendLink) {
-                trendLink.insertAdjacentElement(
-                    'afterend',
-                    element
-                );
+                if (element.previousElementSibling !== trendLink) {
+                    trendLink.insertAdjacentElement(
+                        'afterend',
+                        element
+                    );
+                }
             } else {
-                (
+                const appBar =
                     document.querySelector(
-                        '#main-panel'
-                    ) ||
-                    document.body
-                ).appendChild(element);
+                        '#main-panel .jenkins-app-bar__content'
+                    );
+
+                if (
+                    appBar &&
+                    element.parentElement !== appBar
+                ) {
+                    appBar.appendChild(element);
+                }
             }
 
             return element;
