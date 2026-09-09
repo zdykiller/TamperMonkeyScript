@@ -1,10 +1,9 @@
 // ==UserScript==
 // @name         Jenkins 通用精确构建耗时
 // @namespace    local.jenkins.tools
-// @version      2.1.1
-// @description  在任意 Jenkins 的构建详情、左侧构建历史和时间趋势页面显示秒级耗时
-// @match        *://*/job/*
-// @match        *://*/*/job/*
+// @version      2.2.0
+// @description  在任意 Jenkins 的构建详情、左侧构建历史、执行器和时间趋势页面显示秒级耗时
+// @match        *://*/*
 // @run-at       document-idle
 // @noframes
 // @grant        GM_getValue
@@ -64,9 +63,13 @@
         normalizedPath.endsWith('/buildTimeTrend');
 
     const isBuildDetail =
-        /\/\d+$/.test(normalizedPath);
+        /\/job\/[^/]+\/\d+$/.test(normalizedPath);
 
     installStyles();
+
+    if (sidebarEnabled) {
+        enhanceExecutors();
+    }
 
     /*
      * 左侧构建历史和趋势页共用同一个 Job API Store，
@@ -74,7 +77,7 @@
      */
     let buildStore = null;
 
-    if (sidebarEnabled || isBuildTimeTrend) {
+    if ((sidebarEnabled && document.querySelector('#buildHistoryPage')) || isBuildTimeTrend) {
         buildStore = createJobBuildStore(
             getCurrentJobUrl()
         );
@@ -101,6 +104,130 @@
 
     function reportError(error) {
         console.warn(LOG_PREFIX, error);
+    }
+
+    /*
+     * 执行器面板会被 Jenkins 整块替换。每秒只扫描这块面板，
+     * 按完整构建 URL 缓存数据，避免不同 Job 的相同构建号串用。
+     * 不监听 DOM，因此自己的耗时文本更新不会触发回调循环。
+     */
+    function enhanceExecutors() {
+        const entries = new Map();
+        const controllers = new Set();
+        const badgeClass = `${EXACT_CLASS}--executor`;
+        let activeRequests = 0;
+        let stopped = false;
+
+        function collectBuilds() {
+            const visible = new Map();
+            for (const row of document.querySelectorAll('#executors .executor-row')) {
+                for (const link of row.querySelectorAll('a[href]')) {
+                    const url = new URL(link.href, location.href);
+                    if (url.origin !== location.origin ||
+                        !/\/job\/[^/]+\/\d+\/?$/.test(url.pathname)) {
+                        continue;
+                    }
+
+                    const key = ensureTrailingSlash(url).href;
+                    if (!visible.has(key)) visible.set(key, []);
+                    visible.get(key).push(link);
+                    break;
+                }
+            }
+            return visible;
+        }
+
+        async function refresh(key, entry) {
+            entry.pending = true;
+            activeRequests++;
+            const controller = new AbortController();
+            controllers.add(controller);
+            const timeout = setTimeout(() => controller.abort(), 10000);
+            try {
+                const api = new URL('api/json', key);
+                api.searchParams.set('tree', 'building,duration,timestamp');
+                const response = await fetch(api, {
+                    credentials: 'same-origin',
+                    cache: 'no-store',
+                    headers: { Accept: 'application/json' },
+                    signal: controller.signal
+                });
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const data = await response.json();
+                if (typeof data.building !== 'boolean' ||
+                    !Number.isFinite(data.timestamp) ||
+                    !Number.isFinite(data.duration)) {
+                    throw new Error('构建耗时 API 返回格式无效');
+                }
+                entry.state = { ...data, fetchedAt: Date.now() };
+                entry.error = '';
+            } catch (error) {
+                entry.error = `暂时无法获取耗时：${error.message}`;
+                if (!stopped) reportError(`执行器 ${key}: ${entry.error}`);
+            } finally {
+                clearTimeout(timeout);
+                controllers.delete(controller);
+                entry.pending = false;
+                entry.nextRefresh = Date.now() + 30000;
+                activeRequests--;
+            }
+            if (!stopped) tick();
+        }
+
+        function tick() {
+            if (stopped || document.hidden) return;
+            const visible = collectBuilds();
+            for (const key of entries.keys()) {
+                if (!visible.has(key)) entries.delete(key);
+            }
+
+            for (const [key, links] of visible) {
+                let entry = entries.get(key);
+                if (!entry) {
+                    entry = { state: null, pending: false, nextRefresh: 0, error: '' };
+                    entries.set(key, entry);
+                }
+                for (const link of links) {
+                    let badge = link.parentElement.querySelector(`.${badgeClass}`);
+                    if (!badge) {
+                        badge = document.createElement('span');
+                        badge.className = `${EXACT_CLASS} ${badgeClass}`;
+                        badge.style.display = 'block';
+                        badge.style.fontSize = '0.9em';
+                        badge.style.marginTop = '0.2em';
+                        link.insertAdjacentElement('afterend', badge);
+                    }
+                    const state = entry.state;
+                    setTextIfChanged(badge, state
+                        ? `${state.building ? '已运行' : '耗时'} ${formatClock(getCurrentDuration(state))}`
+                        : (entry.error ? '耗时暂不可用' : '耗时加载中…'));
+                    badge.title = entry.error || (state
+                        ? `${formatExactText(state)}${state.building ? '（运行中为估算，完成后以 API duration 为准）' : ''}`
+                        : '正在读取 Jenkins 构建耗时');
+                }
+
+                if (!entry.pending && activeRequests < 2 &&
+                    Date.now() >= entry.nextRefresh && entry.state?.building !== false) {
+                    void refresh(key, entry);
+                }
+            }
+        }
+
+        let timer = setInterval(tick, 1000);
+        document.addEventListener('visibilitychange', tick);
+        window.addEventListener('pagehide', () => {
+            stopped = true;
+            clearInterval(timer);
+            for (const controller of controllers) controller.abort();
+        });
+        window.addEventListener('pageshow', event => {
+            if (event.persisted && stopped) {
+                stopped = false;
+                timer = setInterval(tick, 1000);
+                tick();
+            }
+        });
+        tick();
     }
 
     async function fetchJson(url) {
