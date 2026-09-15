@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Jenkins 快速日志
 // @namespace    local.jenkins.tools
-// @version      1.3.0
+// @version      1.4.3
 // @description  虚拟滚动查看 Jenkins 日志，范围内位置跳转、搜索、错误上下文和增量跟踪
 // @match        *://*/*
 // @run-at       document-idle
@@ -44,7 +44,10 @@
         const root = host.attachShadow({ mode: 'open' });
         root.innerHTML = `<style>
             :host{font:14px system-ui;color:#dbe5ef}*{box-sizing:border-box}
-            .panel{height:100%;display:flex;flex-direction:column;background:#17212b;border:1px solid #718096;border-radius:8px;padding:12px;gap:10px}
+            .panel{height:100%;display:flex;flex-direction:column;background:#17212b;border:1px solid #718096;border-radius:10px;padding:16px;gap:12px}
+            .titlebar{padding-bottom:10px;border-bottom:1px solid #344454}.actions{gap:10px}.filters{padding-top:4px}
+            .filters label{white-space:nowrap}.navigation{font-size:12px;min-height:28px}.navigation button{padding:4px 8px}
+            .status{font-size:12px}.pages{font-size:12px;justify-content:center}
             .bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}button,input,a{font:inherit}
             button,a{background:#2e4255;color:#fff;border:1px solid #667c90;border-radius:4px;padding:6px 10px;cursor:pointer;text-decoration:none}
             button:disabled{opacity:.5;cursor:wait}input[type=search]{flex:1;min-width:180px;padding:7px}
@@ -54,11 +57,11 @@
             .hit{background:#493f1d}.selected{background:#665322;outline:1px solid #d4b95c}.result{cursor:pointer}
             .number{color:#8296aa;user-select:none;margin-right:14px}.title{flex:1;overflow-wrap:anywhere}
         </style><section class="panel"><div class="bar titlebar"><strong class="title"></strong></div>
-        <div class="bar actions"></div><div class="bar filters"><input type="search" placeholder="搜索已加载日志（普通文本）"><label><input type="checkbox">仅错误及前后 3 行</label></div>
+        <div class="bar actions"></div><div class="bar filters"><input type="search" placeholder="搜索日志，Enter 跳到上下文"><label><input type="checkbox">仅错误及前后 3 行</label></div><div class="bar navigation"></div>
         <div class="bar"><label>已加载范围内位置</label><input class="position" type="range" min="0" max="100" value="100" step="0.1" aria-label="已加载范围内位置"><span class="percent">100%</span></div>
         <div class="status"></div><div class="rows"></div><div class="bar pages"></div></section>`;
         document.body.append(host);
-        root.querySelector('.title').textContent = `快速日志 v1.3.0 · ${decodeURI(new URL(base).pathname)}`;
+        root.querySelector('.title').textContent = `快速日志 v1.4.3 · ${decodeURI(new URL(base).pathname)}`;
         const actions = root.querySelector('.actions');
         const status = root.querySelector('.status');
         const rows = root.querySelector('.rows');
@@ -70,6 +73,11 @@
         let indices = [], lines = [], timer, debounce, controller, note = '';
         let follow = false, resize;
         let matches = [], matchSet = new Set(), selected = -1, contextMode = false, appliedQuery = '';
+        let revision = 0, renderedKey = '', frame = 0;
+        function scheduleRender() {
+            if (closed || frame) return;
+            frame = requestAnimationFrame(() => { frame = 0; if (!closed) render(); });
+        }
 
         const close = () => {
             closed = true;
@@ -77,6 +85,7 @@
             clearTimeout(debounce);
             controller?.abort();
             resize?.disconnect();
+            cancelAnimationFrame(frame);
             host.remove();
         };
         closeCurrent = close;
@@ -115,7 +124,7 @@
                         throw new Error('单次日志超过 128 MiB，未替换当前内容。请下载后用本地查看器打开。');
                     }
                     result.text += decoder.decode(chunk.value, { stream: true });
-                    if (Date.now() - lastProgress > 200) {
+                    if (Date.now() - lastProgress > 500) {
                         note = `正在下载：${(size / 1048576).toFixed(1)} MiB（完成后建立全文索引）`;
                         render();
                         lastProgress = Date.now();
@@ -131,34 +140,38 @@
             const visible = Math.min(300, Math.ceil((rows.clientHeight || 600) / LINE_HEIGHT) + 20);
             const first = Math.max(0, Math.min(Math.floor(top / LINE_HEIGHT) - 10, indices.length - visible));
             const end = Math.min(indices.length, first + visible);
-            const fragment = document.createDocumentFragment();
-            const before = document.createElement('div');
-            before.style.height = `${first * LINE_HEIGHT}px`;
-            fragment.append(before);
-            for (const index of indices.slice(first, end)) {
-                const row = document.createElement('div');
-                row.className = `line${ERROR.test(lines[index]) ? ' error' : ''}`;
-                if (matchSet.has(index)) row.className += ' hit';
-                if (index === matches[selected]) row.className += ' selected';
-                if (!contextMode && matchSet.has(index)) {
-                    row.className += ' result';
-                    row.title = '点击跳转到原始日志上下文';
-                    row.addEventListener('click', () => showMatch(matches.indexOf(index)));
+            const key = `${revision}:${first}:${end}:${selected}:${contextMode}`;
+            if (key !== renderedKey) {
+                renderedKey = key;
+                const fragment = document.createDocumentFragment();
+                const before = document.createElement('div');
+                before.style.height = `${first * LINE_HEIGHT}px`;
+                fragment.append(before);
+                for (const index of indices.slice(first, end)) {
+                    const row = document.createElement('div');
+                    row.className = `line${ERROR.test(lines[index]) ? ' error' : ''}`;
+                    if (matchSet.has(index)) row.className += ' hit';
+                    if (index === matches[selected]) row.className += ' selected';
+                    if (!contextMode && matchSet.has(index)) {
+                        row.className += ' result';
+                        row.title = '点击跳转到原始日志上下文';
+                        row.addEventListener('click', () => showMatch(matches.indexOf(index)));
+                    }
+                    const number = document.createElement('span');
+                    number.className = 'number';
+                    number.textContent = `${partial ? '~' : ''}${index + 1}`;
+                    // Jenkins output is untrusted text, never HTML.
+                    row.append(number, document.createTextNode(lines[index] || ' '));
+                    fragment.append(row);
                 }
-                const number = document.createElement('span');
-                number.className = 'number';
-                number.textContent = `${partial ? '~' : ''}${index + 1}`;
-                // Jenkins output is untrusted text, never HTML.
-                row.append(number, document.createTextNode(lines[index] || ' '));
-                fragment.append(row);
+                const after = document.createElement('div');
+                after.style.height = `${(indices.length - end) * LINE_HEIGHT}px`;
+                fragment.append(after);
+                const left = rows.scrollLeft;
+                rows.replaceChildren(fragment);
+                rows.scrollTop = top;
+                rows.scrollLeft = left;
             }
-            const after = document.createElement('div');
-            after.style.height = `${(indices.length - end) * LINE_HEIGHT}px`;
-            fragment.append(after);
-            const left = rows.scrollLeft;
-            rows.replaceChildren(fragment);
-            rows.scrollTop = top;
-            rows.scrollLeft = left;
             const max = Math.max(0, indices.length * LINE_HEIGHT - (rows.clientHeight || 600));
             position.value = max ? String(Math.min(100, top / max * 100)) : '0';
             percent.textContent = `${Number(position.value).toFixed(1)}%`;
@@ -183,6 +196,7 @@
                 if (contextMode || ((!errors.checked || context.has(i)) && (!query || line.toLocaleLowerCase().includes(query)))) indices.push(i);
             });
             matchSet = new Set(matches);
+            revision++;
             selected = Math.min(selected, matches.length - 1);
             render();
             rows.scrollTop = last ? Math.max(0, indices.length * LINE_HEIGHT - (rows.clientHeight || 600)) : 0;
@@ -195,6 +209,7 @@
             contextMode = true;
             // Context always uses original line indices, regardless of error filtering.
             indices = lines.map((_, i) => i);
+            revision++;
             follow = false;
             clearTimeout(timer);
             followButton.textContent = '跟踪新增';
@@ -238,7 +253,8 @@
                 note = `已加载 ${(new TextEncoder().encode(text).byteLength / 1048576).toFixed(1)} MiB`;
                 cursor = result.cursor;
                 more = result.more;
-                filter(mode !== 'full');
+                // No new text: keep DOM, selection and scroll position intact.
+                if (mode !== 'append' || incoming.length) filter(mode !== 'full');
                 if (!more) follow = false;
             } catch (error) {
                 if (closed) return;
@@ -249,7 +265,7 @@
                 if (!closed) {
                     followButton.textContent = follow ? '暂停跟踪' : '跟踪新增';
                     render();
-                    if (follow && more) timer = setTimeout(() => load('append'), 3000);
+                    if (follow && more) timer = setTimeout(() => load('append'), 5000);
                 }
             }
         }
@@ -268,7 +284,7 @@
         original.rel = 'noopener';
         actions.append(original);
         const pages = root.querySelector('.pages');
-        const filters = root.querySelector('.filters');
+        const filters = root.querySelector('.navigation');
         const matchLabel = document.createElement('span');
         filters.append(matchLabel);
         button('上一个匹配', () => navigateMatch(-1), filters);
@@ -285,8 +301,8 @@
         button('下移 300 行', () => jump(rows.scrollTop + PAGE * LINE_HEIGHT), pages);
         button('末尾', () => jump(indices.length * LINE_HEIGHT), pages);
         position.addEventListener('input', () => jump(Number(position.value) / 100 * Math.max(0, indices.length * LINE_HEIGHT - (rows.clientHeight || 600))));
-        rows.addEventListener('scroll', render, { passive: true });
-        resize = new ResizeObserver(render);
+        rows.addEventListener('scroll', scheduleRender, { passive: true });
+        resize = new ResizeObserver(scheduleRender);
         resize.observe(rows);
         search.addEventListener('input', () => { clearTimeout(debounce); debounce = setTimeout(() => { contextMode = false; selected = -1; filter(); }, 200); });
         search.addEventListener('keydown', event => {
@@ -300,28 +316,66 @@
 
     const current = buildUrl(location.href);
     if (current) {
-        const entry = button('⚡ 快速日志', () => openLog(current), document.body);
+        const entry = button('🔍 快速日志', () => openLog(current), document.body);
         entry.style.cssText = 'position:fixed;right:20px;bottom:20px;z-index:10000;padding:10px 16px;background:#234d70;color:white;border:1px solid #7ca5c7;border-radius:6px;cursor:pointer';
     }
-    // Add an adjacent shortcut without changing native console links or existing scripts.
+    // One compact shortcut per build. Prefer the final console link (usually the
+    // progress/action area) over the leading status icon in a narrow build row.
+    const shortcuts = new Map();
+    const consoleSelector = 'a[href*="/console"]';
+    const durationSelector = '.jenkins-tools-exact-duration--sidebar';
+    const historySelector = '.app-builds-container__item';
+    const relevantSelector = `${consoleSelector}, ${durationSelector}, ${historySelector}`;
     function enhance() {
-        document.querySelectorAll('a[href]').forEach(link => {
-            if (link.dataset.jenkinsQuickLog || !/\/console(?:Full)?\/?(?:[?#].*)?$/.test(link.getAttribute('href'))) return;
+        for (const [base, quick] of shortcuts) {
+            if (!quick.isConnected) shortcuts.delete(base);
+        }
+        const candidates = new Map();
+        document.querySelectorAll(consoleSelector).forEach(link => {
+            if (!/\/console(?:Full)?\/?(?:[?#].*)?$/.test(link.getAttribute('href'))) return;
             const base = buildUrl(link.href);
             if (!base) return;
-            link.dataset.jenkinsQuickLog = '1';
+            candidates.set(base, link);
+        });
+        document.querySelectorAll(historySelector).forEach(item => {
+            const buildLink = item.querySelector('a.app-builds-container__item__inner__link[href]');
+            const base = buildLink && buildUrl(buildLink.href);
+            if (!base) return;
+            const exact = item.querySelector(durationSelector);
+            const time = item.querySelector('.app-builds-container__item__time');
+            // Keep our node outside the duration span: its textContent is refreshed
+            // by JenkinsTaskDuration. A late duration insertion relocates this node.
+            const anchor = exact || time;
+            if (anchor) candidates.set(base, anchor);
+        });
+        for (const [base, link] of candidates) {
+            if (shortcuts.has(base)) {
+                const quick = shortcuts.get(base);
+                if (link.nextSibling !== quick) link.after(quick);
+                continue;
+            }
             const quick = document.createElement('a');
+            quick.className = 'jenkins-quick-log-shortcut';
             quick.href = base;
-            quick.textContent = ' ⚡快速日志';
-            quick.style.cssText = 'margin-left:8px;font-size:12px';
+            quick.textContent = '🔍';
+            quick.title = '快速日志';
+            quick.setAttribute('aria-label', '快速日志');
+            quick.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;flex:0 0 20px;width:20px;height:20px;min-width:20px;margin-left:3px;padding:0;white-space:nowrap;vertical-align:middle;font-size:12px;line-height:1;text-decoration:none;border-radius:4px';
             quick.addEventListener('click', event => { event.preventDefault(); openLog(base); });
             link.after(quick);
-        });
+            shortcuts.set(base, quick);
+        }
     }
     enhance();
-    let refresh;
-    new MutationObserver(() => {
-        clearTimeout(refresh);
-        refresh = setTimeout(enhance, 300);
+    new MutationObserver(records => {
+        const relevant = records.some(record => [...record.addedNodes, ...record.removedNodes].some(node =>
+            node.nodeType === 1 && !node.classList.contains('jenkins-quick-log-shortcut') &&
+            (node.matches(relevantSelector) || node.querySelector(relevantSelector))));
+        const removedShortcut = [...shortcuts.values()].some(quick => !quick.isConnected);
+        if (!relevant && !removedShortcut) return;
+        // Jenkins replaces build-history rows on refresh. MutationObserver batches
+        // those changes before paint: restore here, not 800 ms later in a timer.
+        // Our insertion produces a second callback, ignored by the checks above.
+        enhance();
     }).observe(document.body, { childList: true, subtree: true });
 })();
